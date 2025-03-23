@@ -112,11 +112,13 @@ func isInternal(funcName string) bool {
 
 // TryCatch simulates a try/catch block. It executes the try function; if a panic occurs,
 // it recovers from the panic and passes an Exception to the catch function.
-// The return value of catch becomes the return value of TryCatch.
-func TryCatch(try func() any, catch func(e *Exception) any) any {
-	var ret any
+// It returns the value from try (if successful) or catch (if an exception occurred),
+// along with a boolean indicating whether the operation completed without exceptions.
+func TryCatch(try func() any, catch func(e *Exception) any) (ret any, ok bool) {
+	ok = true
 	defer func() {
 		if r := recover(); r != nil {
+			ok = false
 			var ex *Exception
 			switch v := r.(type) {
 			case *Exception:
@@ -130,15 +132,52 @@ func TryCatch(try func() any, catch func(e *Exception) any) any {
 		}
 	}()
 	ret = try()
-	return ret
+	return ret, ok
 }
 
 // TryCatchFinally simulates a try/catch/finally block. It executes the try function,
 // and in case of a panic, it recovers and calls the catch function. Regardless of a panic,
 // the finally function is always executed.
-func TryCatchFinally(try func() any, catch func(e *Exception) any, finally func()) any {
+// It returns the value from try (if successful) or catch (if an exception occurred),
+// along with a boolean indicating whether the operation completed without exceptions.
+func TryCatchFinally(try func() any, catch func(e *Exception) any, finally func()) (ret any, ok bool) {
 	defer finally()
 	return TryCatch(try, catch)
+}
+
+// TryCatchT is a generic version of TryCatch that allows specifying the return type explicitly.
+// It executes the try function; if a panic occurs, it recovers and passes an Exception to the catch function.
+// It returns the value from try (if successful) or catch (if an exception occurred) with the specified type T,
+// along with a boolean indicating whether the operation completed without exceptions.
+func TryCatchT[T any](try func() T, catch func(e *Exception) T) (ret T, ok bool) {
+	ok = true
+	defer func() {
+		if r := recover(); r != nil {
+			ok = false
+			var ex *Exception
+			switch v := r.(type) {
+			case *Exception:
+				ex = v
+			case error:
+				ex = NewFromError(v)
+			default:
+				ex = New(fmt.Sprintf("%v", v))
+			}
+			ret = catch(ex)
+		}
+	}()
+	ret = try()
+	return ret, ok
+}
+
+// TryCatchFinallyT is a generic version of TryCatchFinally that allows specifying the return type explicitly.
+// It executes the try function, and in case of a panic, it recovers and calls the catch function.
+// Regardless of a panic, the finally function is always executed.
+// It returns the value from try (if successful) or catch (if an exception occurred) with the specified type T,
+// along with a boolean indicating whether the operation completed without exceptions.
+func TryCatchFinallyT[T any](try func() T, catch func(e *Exception) T, finally func()) (ret T, ok bool) {
+	defer finally()
+	return TryCatchT(try, catch)
 }
 
 // Throw panics with a new Exception created with the specified message.
@@ -161,19 +200,23 @@ func ThrowIf(condition bool, msg string) {
 // The following anonymous variable references all exported symbols to ensure they are used,
 // avoiding potential "unused" warnings from certain static analysis tools.
 var _ = struct {
-	New             func(string) *Exception
-	NewFromError    func(error) *Exception
-	TryCatch        func(try func() any, catch func(e *Exception) any) any
-	TryCatchFinally func(try func() any, catch func(e *Exception) any, finally func()) any
-	Throw           func(string)
-	Throwf          func(string, ...interface{})
-	ThrowIf         func(bool, string)
+	New              func(string) *Exception
+	NewFromError     func(error) *Exception
+	TryCatch         func(try func() any, catch func(e *Exception) any) (any, bool)
+	TryCatchFinally  func(try func() any, catch func(e *Exception) any, finally func()) (any, bool)
+	TryCatchT        func(try func() any, catch func(e *Exception) any) (any, bool)
+	TryCatchFinallyT func(try func() any, catch func(e *Exception) any, finally func()) (any, bool)
+	Throw            func(string)
+	Throwf           func(string, ...interface{})
+	ThrowIf          func(bool, string)
 }{
-	New:             New,
-	NewFromError:    NewFromError,
-	TryCatch:        TryCatch,
-	TryCatchFinally: TryCatchFinally,
-	Throw:           Throw,
-	Throwf:          Throwf,
-	ThrowIf:         ThrowIf,
+	New:              New,
+	NewFromError:     NewFromError,
+	TryCatch:         TryCatch,
+	TryCatchFinally:  TryCatchFinally,
+	TryCatchT:        TryCatchT[any],
+	TryCatchFinallyT: TryCatchFinallyT[any],
+	Throw:            Throw,
+	Throwf:           Throwf,
+	ThrowIf:          ThrowIf,
 }
